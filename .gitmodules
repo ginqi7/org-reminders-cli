@@ -1,0 +1,2 @@
+[submodule "tree-sitter-swift"]
+	url = git@github.com:alex-pinkus/tree-sitter-swift.git
