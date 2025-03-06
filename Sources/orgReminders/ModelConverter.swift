@@ -214,6 +214,21 @@ public class ModelConverter {
     }
   }
 
+  func toRemindersPriority(priority: Int) -> Priority {
+    switch priority {
+    case 0:
+      return Priority.none
+    case 1:
+      return Priority.low
+    case 5:
+      return Priority.medium
+    case 9:
+      return Priority.high
+    default:
+      return Priority.none
+    }
+  }
+
   /// A description Convert Reminders Priority to org Priority
   /// - Parameter reminderPriority: Int
   /// - Returns: String?
@@ -260,6 +275,15 @@ public class ModelConverter {
       return nil
     }
     return self.dateFormatter.string(from: date)
+  }
+
+  public func dateToDateComponents(date: Date?) -> DateComponents? {
+    let calendar = Calendar.current
+    if let date = date {
+      return calendar.dateComponents(
+        [.year, .month, .day, .hour, .minute, .second], from: date)
+    }
+    return nil
   }
 
 }

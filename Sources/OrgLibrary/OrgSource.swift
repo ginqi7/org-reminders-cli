@@ -109,13 +109,13 @@ public class OrgSource {
   public func queryExistHeadlineByInfo(headline: OrgHeadline) -> OrgHeadline? {
     let level = headline.level
     let title = headline.title
-    let priority = headline.priority
-    let statue = headline.status
+    // let priority = headline.priority
+    // let statue = headline.status
     let headlines = headline.level == 1 ? self.headlines : self.getAllH2s()
     return headlines.first { headline in
       title == headline.title
-        && priority == headline.priority
-        && statue == headline.status
+        // && priority == headline.priority
+        // && statue == headline.status
         && level == headline.level
     }
   }
@@ -209,25 +209,17 @@ public class OrgSource {
   ///
   /// - Returns: Node?
   func findChildUntil(node: Node, type: String) -> Node? {
-    for i in 0...node.namedChildCount {
-      if let child = node.namedChild(at: i) {
-        if child.nodeType == type {
-          return child
-        }
-      }
-    }
-    return nil
+    return (0..<node.namedChildCount)
+      .compactMap { node.namedChild(at: $0) }
+      .first { $0.nodeType == type }
   }
 
   /// A description Get Node text.
   /// - Parameter node: Node
   /// - Returns: String
   func getNodeText(node: Node) -> String {
-    let source = self.source
-    if let range = getNodeRange(node: node) {
-      return String(source[range])
-    }
-    return ""
+    guard let range = getNodeRange(node: node) else { return "" }
+    return String(self.source[range])
   }
 
   /// A description Convert node to OrgHeadline
@@ -246,59 +238,42 @@ public class OrgSource {
       return headline
     }
     var index = 0
-    guard let item = items.child(at: index)
-
-    else {
-      return headline
+    if let item = items.child(at: index) {
+      let itemText = getNodeText(node: item)
+      if ["TODO", "DONE"].contains(itemText) {
+        headline.status = itemText
+        index += 1
+      }
     }
-    var itemText = getNodeText(node: item)
-    if ["TODO", "DONE"].contains(itemText) {
-      headline.status = itemText
-      index = index + 1
+    if let item = items.child(at: index) {
+      let itemText = getNodeText(node: item)
+      if ["[#A]", "[#B]", "[#C]"].contains(itemText) {
+        headline.priority = itemText
+        index += 1
+      }
     }
-    guard let item = items.child(at: index)
-
-    else {
-      return headline
+    if let item = items.child(at: index), let last = items.lastChild {
+      let nsRange = NSRange(
+        location: item.range.lowerBound, length: last.range.upperBound - item.range.lowerBound)
+      if let range = nsRangeToRange(nsRange: nsRange) {
+        headline.title = removeStatisticMarks(from: String(self.source[range]))
+      }
     }
-    itemText = getNodeText(node: item)
-    if ["[#A]", "[#B]", "[#C]"].contains(itemText) {
-      headline.priority = itemText
-      index = index + 1
-    }
-    guard let item = items.child(at: index),
-      let last = items.lastChild
-    else {
-      return headline
-    }
-    let source = self.source
-
-    let nsRange = NSRange(
-      location: item.range.lowerBound,
-      length: last.range.upperBound - item.range.lowerBound)
-    guard let range = nsRangeToRange(nsRange: nsRange) else {
-      return headline
-    }
-    itemText = String(source[range])
-    headline.title = removeStatisticMarks(from: itemText)
-    guard let propertyDrawer = findChildUntil(node: from, type: "property_drawer") else {
-      return headline
-    }
-    for i in 0...propertyDrawer.namedChildCount {
-      if let child = propertyDrawer.namedChild(at: i) {
-        if let key = child.namedChild(at: 0),
+    if let propertyDrawer = findChildUntil(node: from, type: "property_drawer") {
+      for i in 0..<propertyDrawer.namedChildCount {
+        if let child = propertyDrawer.namedChild(at: i),
+          let key = child.namedChild(at: 0),
           let value = child.namedChild(at: 1)
         {
           headline.properties[getNodeText(node: key)] = getNodeText(node: value)
         }
       }
     }
-    guard let body = findChildUntil(node: from, type: "body") else {
-      return headline
-    }
-    let bodyStr = getNodeText(node: body).trimmingCharacters(in: .whitespacesAndNewlines)
-    if !bodyStr.isEmpty {
+    if let body = findChildUntil(node: from, type: "body") {
+      let bodyStr = getNodeText(node: body).trimmingCharacters(in: .whitespacesAndNewlines)
+      if !bodyStr.isEmpty {
         headline.content = bodyStr
+      }
     }
     return headline
   }

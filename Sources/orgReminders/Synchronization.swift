@@ -110,7 +110,9 @@ public class Synchronization {
           try deleteItemInOrg(item: orgItem)
         }
       } else {
-        addItemToReminders(item: orgItem)
+        if let reminder = try addItemToReminders(item: orgItem) {
+          try updateItemInOrg(item: reminder, withoutId: true)
+        }
       }
     }
     for remindersItem in remindersItems {
@@ -177,19 +179,26 @@ public class Synchronization {
         isCompleted: orgItem.isCompleted,
         priority: orgItem.priority
       ) {
-          print("Update Item: \(orgItem.title) (\(orgItem.externalId!)) in Reminders")
-          updateReminder = self.converter.toCommonReminder(reminder: reminder)
+        print("Update Item: \(orgItem.title) (\(orgItem.externalId!)) in Reminders")
+        updateReminder = self.converter.toCommonReminder(reminder: reminder)
       }
 
-    } 
-    let updateHeadline = self.converter.toOrgHeadline(reminder: updateReminder)
-    print(updateHeadline.toJson())
-    if let headline = self.orgSource.queryExistHeadline(headline: updateHeadline) {
+    }
+    try updateItemInOrg(item: updateReminder)
+  }
+
+  func updateItemInOrg(item: CommonReminder, withoutId: Bool = false) throws {
+    let updateHeadline = self.converter.toOrgHeadline(reminder: item)
+    let existHeadline =
+      withoutId
+      ? self.orgSource.queryExistHeadline(headline: updateHeadline, type: .info)
+      : self.orgSource.queryExistHeadline(headline: updateHeadline)
+    if let headline = existHeadline {
       updateHeadline.node = headline.node
       try self.writer.updateHeadline(headline: updateHeadline)
-      print("Update Item: \(orgItem.title) (\(orgItem.externalId!)) in Org Mode")
+      print("Update Item: \(item.title) (\(item.externalId!)) in Org Mode")
     }
-    }
+  }
 
   func deleteListInOrg(list: CommonList) throws {
     let headline = self.converter.toOrgHeadline(list: list)
@@ -210,7 +219,20 @@ public class Synchronization {
     }
   }
 
-  func addItemToReminders(item: CommonReminder) {
+  func addItemToReminders(item: CommonReminder) throws -> CommonReminder? {
+    print("Add Item: \(item.title) in Reminders")
+    if let reminder = try reminders.addReminder(
+      string: item.title,
+      notes: item.notes,
+      listId: item.list.id!,
+      dueDateComponents: self.converter.dateToDateComponents(date: item.dueDate),
+      priority: self.converter.toRemindersPriority(priority: item.priority),
+      url: nil)
+    {
+      return self.converter.toCommonReminder(
+        reminder: reminder)
+    }
+    return nil
   }
 
   func addListToReminders(list: CommonList) throws {
