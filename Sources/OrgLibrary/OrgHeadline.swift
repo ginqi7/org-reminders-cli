@@ -1,32 +1,27 @@
 import Foundation
-import SwiftTreeSitter
 
 public class OrgHeadline: Encodable {
   public var level: Int
   public var title: String
   public var status: String?
   public var priority: String?
-  public var scheduled: String?
-  public var closed: String?
+  public var plans: [String: String]
   public var properties: [String: String]
+  public var tags: [String]
   public var children: [OrgHeadline]
   public var parent: OrgHeadline?
   public var content: String?
-  public var node: Node?
 
   private enum EncodingKeys: String, CodingKey {
     case level
     case title
     case status
     case priority
-    case scheduled
-    case closed
+    case plans
     case properties
     case children
     case parent
     case content
-    case begin
-    case end
   }
 
   public init(
@@ -34,55 +29,21 @@ public class OrgHeadline: Encodable {
     title: String = "",
     status: String? = nil,
     priority: String? = nil,
-    scheduled: String? = nil,
-    closed: String? = nil,
+    plans: [String: String] = [:],
     properties: [String: String] = [:],
+    tags: [String] = [],
     children: [OrgHeadline] = [],
-    node: Node? = nil,
     content: String? = nil
   ) {
     self.level = level
     self.title = title
     self.status = status
     self.priority = priority
-    self.scheduled = scheduled
-    self.closed = closed
+    self.plans = plans
     self.properties = properties
     self.children = children
-    self.node = node
     self.content = content
-  }
-
-  /// A description Compute an hash value to identify a Headline.
-  /// - Parameters:
-  ///
-  /// - Returns: String
-  public func computeHash() -> String {
-    let status = self.status ?? ""
-    let priority = self.priority ?? ""
-    let scheduled = self.scheduled ?? ""
-    let closed = self.closed ?? ""
-    let content = self.content ?? ""
-    return sha256Hash("\(level):\(title):\(status)\(priority)\(scheduled)\(closed)\(content)")
-  }
-
-  /// A description Checks if a headline has been modified.
-  /// Modification will update the last modified time.
-  /// - Parameters:
-  ///
-  /// - Returns: new Hash or nil
-  public func modified() -> String? {
-    if self.level == 1 {
-      return nil
-    }
-    if let hash = self.properties["HASH"] {
-      let newHash = computeHash()
-      if String(describing: hash) == newHash {
-        return nil
-      }
-      return newHash
-    }
-    return nil
+    self.tags = tags
   }
 
   /// A description
@@ -94,8 +55,7 @@ public class OrgHeadline: Encodable {
     try container.encode(self.title, forKey: .title)
     try container.encode(self.status, forKey: .status)
     try container.encode(self.priority, forKey: .priority)
-    try container.encode(self.scheduled, forKey: .scheduled)
-    try container.encode(self.closed, forKey: .closed)
+    try container.encode(self.plans, forKey: .plans)
     try container.encode(self.properties, forKey: .properties)
     try container.encode(self.content, forKey: .content)
     try container.encode(self.parent, forKey: .parent)
@@ -134,21 +94,29 @@ public class OrgHeadline: Encodable {
   ///
   /// - Returns:
   public func toOrgStr() -> String {
+
     let stars = self.level == 1 ? "\n*" : "\n**"
     let status = self.status == nil ? "" : " \(self.status!)"
-    let closed = self.closed == nil ? "" : "\n\(self.closed!)"
     let content = self.content == nil ? "" : "\n\(self.content!)"
     let priority = self.priority == nil ? "" : " [#\(self.priority!)]"
     let title = " \(self.title)"
     let todoStatistics = countStatistics()
-    var properties = self.properties.map { (key: String, value: String) in
-      return "\n:\(key): \(value)"
-    }.joined()
+    // CLOSED: [2025-03-10 Mon 13:18]
+    // SCHEDULED: <2025-03-10 Mon>
+    var plans = self.plans.map { "\($0.key): \($0.value)" }.joined(separator: " ")
+    plans = plans == "" ? "" : "\n\(plans)"
+    // :PROPERTIES:
+    // :HASH: a253e0767a221a52085dfe9ab30b8705b9f0ac82af831db3f22c6774bc5ef903
+    // :EXTERNAL-ID: F5F608AB-68B2-4B16-BDA2-10176FFF1301
+    // :LAST-MODIFIED: 2025-03-08 16:36:34
+    // :END:
+    var properties = self.properties.map { "\n:\($0.key): \($0.value)" }.joined()
+    properties = properties == "" ? "" : "\n:PROPERTIES:\(properties)\n:END:"
     let subheadlines = self.children.map { subheadline in
       return subheadline.toOrgStr()
     }.joined()
-    properties = properties == "" ? "" : "\n:PROPERTIES:\(properties)\n:END:"
+
     return
-      "\(stars)\(status)\(priority)\(title)\(todoStatistics)\(closed)\(properties)\(content)\(subheadlines)"
+      "\(stars)\(status)\(priority)\(title)\(todoStatistics)\(plans)\(properties)\(content)\(subheadlines)"
   }
 }

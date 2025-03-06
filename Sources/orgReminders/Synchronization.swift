@@ -6,25 +6,20 @@ import RemindersLibrary
 
 public class Synchronization {
   var filePath: String
-  var writer: OrgWriter
   var converter: ModelConverter
   var orgSource: OrgSource
   var reminders: Reminders
+  var logger: SyncLogger
 
-  init(
-    filePath: String
-  ) throws {
+  init(filePath: String, logLevel: LogLevel) throws {
     self.filePath = filePath
     self.orgSource = try OrgSource(filePath: filePath)
-    self.writer = OrgWriter(filePath: filePath, orgSource: self.orgSource)
     self.converter = ModelConverter()
     self.reminders = Reminders()
+    self.logger = SyncLogger(level: logLevel)
   }
 
-  func sync(
-    type: SyncType
-  ) {
-
+  func sync(type: SyncType) {
     do {
       switch type {
       case .auto:
@@ -42,24 +37,48 @@ public class Synchronization {
   }
 
   func updateHash() throws {
-    try self.writer.updateHash(modifiedDate: converter.dateToStr(date: Date()))
+    try self.orgSource.refreshSource()
+    try self.orgSource.refreshOrgHeadlines()
+    let items = self.orgSource.getAllH2s().map {
+      self.converter.toCommonReminder(headline: $0)
+    }
+    deleteRepeatedItem(items: items)
+    for item in items {
+      if let hash = item.modified() {
+        item.hash = hash
+        item.lastModified = CommonDate()
+        actionToOrg(action: .update, value: item)
+      }
+    }
+  }
+
+  func deleteRepeatedItem(items: [CommonReminder]) {
+    let groupedDictionary = Dictionary(
+      grouping: items.filter({ $0.externalId != nil }),
+      by: { $0.externalId })
+    let duplicates = groupedDictionary.filter { $0.value.count > 1 }
+    duplicates.values
+      .forEach { actionToOrg(action: .delete, value: $0.first!) }
   }
 
   func syncAuto() throws {
+    startPolling()
+    monitorFileChanges()
   }
 
   func syncOnce() throws {
+    // Get Data from Reminders
+    let (remindersLists, remindersItems) = fetchAllFromReminders()
 
-    let reminders = Reminders()
-    let remindersLists = self.converter.toCommonLists(calendars: reminders.getLists())
-    let remindersItems = self.converter.toCommonReminders(
-      reminders: reminders.allReminders(displayOptions: .all))
-
+    // Get Data from Org Mode.
     try self.orgSource.refreshOrgHeadlines()
-
     let headlines = self.orgSource.getHeadlines()
     let orgLists = self.converter.toCommonLists(headlines: headlines)
     let orgTodos = self.converter.toCommonReminders(headlines: headlines)
+    // Sync Data.
+    // print(headlines.count)
+    // print(orgLists.count)
+    // print(headlines.map({ $0.properties["LIST-ID"] }))
     try syncLists(orgLists: orgLists, remindersLists: remindersLists)
     try syncItems(orgItems: orgTodos, remindersItems: remindersItems)
   }
@@ -71,88 +90,92 @@ public class Synchronization {
     print("[\(name)]方法调用时间：\(end.timeIntervalSince(start)) 秒")
   }
 
-  func syncAll() throws {
-    let reminders = Reminders()
-    let remindersLists = self.converter.toCommonLists(calendars: reminders.getLists())
+  func fetchAllFromReminders() -> ([CommonList], [CommonReminder]) {
+    let remindersLists = self.converter.toCommonLists(calendars: self.reminders.getLists())
     let remindersItems = self.converter.toCommonReminders(
-      reminders: reminders.allReminders(displayOptions: .all))
+      reminders: self.reminders.allReminders(displayOptions: .all))
+    return (remindersLists, remindersItems)
+  }
+
+  func syncAll() throws {
+    // Get Data from Reminders.
+    let (remindersLists, remindersItems) = fetchAllFromReminders()
+
+    // Flush all headlines to Org Mode file.
     let headlines = self.converter.toOrgHeadlines(lists: remindersLists, reminders: remindersItems)
-    try self.writer.flushHeadlines(headlines: headlines)
+    try self.orgSource.flushHeadlines(headlines: headlines)
 
   }
 
-  func syncMonitor() throws {
-    startPolling()
-    monitorFileChanges()
-
-  }
-
-  func mergeMetaData(lists: [CommonList], reminders: [CommonReminder]) -> [CommonReminder] {
-    for reminder in reminders {
-      reminder.list = lists.first { list in
-        reminder.list.id == list.id
-      }!
-    }
-    return reminders
+  func arrayToDictionary<T>(from items: [T], keyProvider: (T) -> String?) -> [String?: T] {
+    return
+      items.filter { keyProvider($0) != nil }
+      .reduce(into: [String: T]()) { result, item in
+        result[keyProvider(item)!] = item
+      }
   }
 
   func syncItems(orgItems: [CommonReminder], remindersItems: [CommonReminder]) throws {
-    let orgDictionary = Dictionary(uniqueKeysWithValues: orgItems.map { ($0.externalId, $0) })
-    let remindersDictionary = Dictionary(
-      uniqueKeysWithValues: remindersItems.map { ($0.externalId, $0) })
+    let orgDictionary = arrayToDictionary(from: orgItems, keyProvider: { $0.externalId })
+    // print(orgDictionary)
+    let remindersDictionary = arrayToDictionary(
+      from: remindersItems, keyProvider: { $0.externalId })
 
     for orgItem in orgItems {
-      if let externalId = orgItem.externalId {
-        let matchList = remindersDictionary[externalId]
-        if let remindersItem = matchList {
-          try syncItem(orgItem: orgItem, remindersItem: remindersItem)
-        } else {
-          try deleteItemInOrg(item: orgItem)
+      // There is no externalId, It is a new item in Org Mode file.
+      guard let externalId = orgItem.externalId else {
+        if let reminder = try addItemToReminders(item: orgItem) {
+          // print(reminder.toJson())
+          actionToOrg(action: .update, value: reminder)
         }
-      } else {
-        addItemToReminders(item: orgItem)
+        continue
       }
-    }
-    for remindersItem in remindersItems {
-      let remindersListId = remindersItem.externalId
-      let matchList = orgDictionary[remindersListId]
-      if matchList == nil {
-        try addItemToOrg(item: remindersItem)
+      // There is no matched item in Reminders, So It's deleted in Reminders.
+      guard let matchedItem = remindersDictionary[externalId] else {
+        actionToOrg(action: .delete, value: orgItem)
+        continue
       }
+      // Sync Item.
+      try syncItem(orgItem: orgItem, remindersItem: matchedItem)
     }
 
+    // There is no matched item in OrgMode, It a new Item in Reminders.
+    for remindersItem in remindersItems {
+      if orgDictionary[remindersItem.externalId] == nil {
+        actionToOrg(action: .add, value: remindersItem)
+      }
+    }
   }
 
   func syncLists(orgLists: [CommonList], remindersLists: [CommonList]) throws {
-    for orgList in orgLists {
-      if let orgListId = orgList.id {
-        let matchList = remindersLists.first { reminderList in
-          orgListId == reminderList.id
-        }
-        if let remindersList = matchList {
-          syncList(orgList: orgList, remindersList: remindersList)
-        } else {
-          try deleteListInOrg(list: orgList)
-        }
-      } else {
-        try addListToReminders(list: orgList)
-      }
-    }
+    let orgDictionary = arrayToDictionary(from: orgLists) { $0.id }
+    let remindersDictionary = arrayToDictionary(from: remindersLists) { $0.id }
 
-    for remindersList in remindersLists {
-      let remindersListId = remindersList.id
-      let matchList = orgLists.first { orgList in
-        remindersListId == orgList.id
+    for orgList in orgLists {
+      // There is no id, It is a new list in Org Mode file.
+      guard let orgListId = orgList.id else {
+        try addListToReminders(list: orgList)
+        continue
       }
-      if matchList == nil {
-        try addListToOrg(list: remindersList)
+      // There is no matched list in Reminders, So It's deleted in Reminders.
+      guard let matchedList = remindersDictionary[orgListId] else {
+        actionToOrg(action: .delete, value: orgList)
+        continue
+      }
+      // Sync List.
+      syncList(orgList: orgList, remindersList: matchedList)
+    }
+    // There is no matched list in OrgMode, It a new list in Reminders.
+    for remindersList in remindersLists {
+      if orgDictionary[remindersList.id] == nil {
+        actionToOrg(action: .add, value: remindersList)
       }
     }
   }
 
   func syncList(orgList: CommonList, remindersList: CommonList) {
     if orgList.title != remindersList.title {
-      print("Update Org List: (\(orgList.id!)) \(orgList.title) From Reminders. Not Implemented")
+      actionToOrg(action: .update, value: remindersList)
     }
   }
 
@@ -163,94 +186,79 @@ public class Synchronization {
     else {
       return
     }
-    if orgLastModified == remindersLastModified {
+    if orgItem.isDeleted {
+      actionToReminders(action: .delete, value: orgItem)
+      let _ = try self.reminders.delete(query: orgItem.externalId!, listQuery: orgItem.list.id!)
+      return
+    }
+    if orgLastModified.date == remindersLastModified.date {
       return
     }
     var updateReminder = remindersItem
-    if orgLastModified > remindersLastModified {
+    if orgLastModified.date > remindersLastModified.date {
+      actionToReminders(action: .update, value: orgItem)
       if let reminder = try reminders.updateItem(
-        itemAtIndex: orgItem.externalId!,
-        listId: orgItem.list.id!,
+        query: orgItem.externalId!,
+        listQuery: orgItem.list.id!,
         newText: orgItem.title,
         newNotes: orgItem.notes,
         url: nil,
         isCompleted: orgItem.isCompleted,
         priority: orgItem.priority
       ) {
-          print("Update Item: \(orgItem.title) (\(orgItem.externalId!)) in Reminders")
-          updateReminder = self.converter.toCommonReminder(reminder: reminder)
+        updateReminder = self.converter.toCommonReminder(reminder: reminder)
       }
 
-    } 
-    let updateHeadline = self.converter.toOrgHeadline(reminder: updateReminder)
-    print(updateHeadline.toJson())
-    if let headline = self.orgSource.queryExistHeadline(headline: updateHeadline) {
-      updateHeadline.node = headline.node
-      try self.writer.updateHeadline(headline: updateHeadline)
-      print("Update Item: \(orgItem.title) (\(orgItem.externalId!)) in Org Mode")
     }
-    }
-
-  func deleteListInOrg(list: CommonList) throws {
-    let headline = self.converter.toOrgHeadline(list: list)
-    if let existHeadline = self.orgSource.queryExistHeadline(headline: headline) {
-      headline.node = existHeadline.node
-      try self.writer.deleteHeadline(headline: headline)
-      print("Delete List: \(list.title)\(list.id!) in Org")
-    }
+    actionToOrg(action: .update, value: updateReminder)
   }
 
-  func deleteItemInOrg(item: CommonReminder) throws {
-    let headline = self.converter.toOrgHeadline(reminder: item)
-
-    if let existHeadline = self.orgSource.queryExistHeadline(headline: headline) {
-      headline.node = existHeadline.node
-      try self.writer.deleteHeadline(headline: headline)
-      print("Delete List: \(item.title)\(item.externalId!) in Org")
-    }
+  func actionToOrg(action: SyncLogger.Action, value: Encodable) {
+    self.logger.target = .org
+    self.logger.action = action
+    self.logger.value = value
+    self.logger.log()
   }
 
-  func addItemToReminders(item: CommonReminder) {
+  func actionToReminders(action: SyncLogger.Action, value: Encodable) {
+    self.logger.target = .reminders
+    self.logger.action = action
+    self.logger.value = value
+    self.logger.log()
+  }
+
+  func addItemToReminders(item: CommonReminder) throws -> CommonReminder? {
+    actionToReminders(action: .add, value: item)
+    if let reminder = try reminders.addReminder(
+      string: item.title,
+      notes: item.notes,
+      listQuery: item.list.id!,
+      dueDateComponents: item.dueDate?.toDateComponents(),
+      priority: self.converter.toRemindersPriority(priority: item.priority),
+      url: nil)
+    {
+      return self.converter.toCommonReminder(reminder: reminder)
+    }
+    return nil
   }
 
   func addListToReminders(list: CommonList) throws {
+    actionToReminders(action: .add, value: list)
     if let newList = try self.reminders.newList(with: list.title, source: nil) {
       let newCommonList = self.converter.toCommonList(calendar: newList)
-      let headline = self.converter.toOrgHeadline(list: newCommonList)
-
-      if let existHeadline = self.orgSource.queryExistHeadlineByInfo(headline: headline) {
-        headline.node = existHeadline.node
-        try writer.updateHeadline(headline: headline)
-      }
+      actionToOrg(action: .update, value: newCommonList)
     }
-    print("Add List: \(list.title) to Reminders")
-  }
-
-  func addListToOrg(list: CommonList) throws {
-    let id = list.id == nil ? "" : "(\(list.id!))"
-    try writer.addHeadline(headline: self.converter.toOrgHeadline(list: list))
-    print("Add List: \(list.title)\(id) to Org")
-  }
-  func addItemToOrg(item: CommonReminder) throws {
-    let id = item.externalId == nil ? "" : "(\(item.externalId!))"
-    try writer.addHeadline(headline: self.converter.toOrgHeadline(reminder: item))
-    print("Add Item: \(item.title)\(id) to Org")
-  }
-
-  func pollTask() {
-    print("轮询任务执行，时间：\(Date())")
   }
 
   func startPolling() {
     DispatchQueue.global().async {
       while true {
-        // do {
-        //   throw Error()
-        //   // try self.sync()
-        // } catch let error {
-        //   print("Failed to sync reminders with error: \(error)")
-        //   exit(1)
-        // }
+        do {
+          try self.syncOnce()
+        } catch let error {
+          print("Failed to sync reminders with error: \(error)")
+          exit(1)
+        }
         Thread.sleep(forTimeInterval: 10)  // 等待 10 秒
       }
     }
@@ -267,20 +275,19 @@ public class Synchronization {
     )
 
     dispatchSource.setEventHandler {
-      // do {
-      //   // try self.sync()
-      // } catch let error {
-      //   print("Failed to sync reminders with error: \(error)")
-      //   exit(1)
-      // }
+      do {
+        dispatchSource.suspend()
+        try self.updateHash()
+        dispatchSource.resume()
+      } catch let error {
+        print("Failed to sync reminders with error: \(error)")
+      }
 
     }
-
     dispatchSource.setCancelHandler {
       close(fileDescriptor)
     }
     dispatchSource.resume()
     RunLoop.main.run()
   }
-
 }

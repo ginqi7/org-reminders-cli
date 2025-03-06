@@ -1,3 +1,4 @@
+import CommonLibrary
 import Foundation
 import SwiftTreeSitter
 import TreeSitterOrg
@@ -6,14 +7,11 @@ public class OrgSource {
   var filePath: String
   var source: String = ""
   var headlines: [OrgHeadline] = []
+  var commonLists: [CommonList] = []
+  var commonReminders: [CommonReminder] = []
   var tree: MutableTree? = nil
   var language = Language(language: tree_sitter_org())
   var parser = Parser()
-
-  public enum QueryType: String {
-    case id
-    case info
-  }
 
   public init(filePath: String) throws {
     self.filePath = filePath
@@ -21,12 +19,6 @@ public class OrgSource {
     self.source = readFileContents(atPath: self.filePath) ?? ""
   }
 
-  public func measureTime(name: String, block: () throws -> Void) throws {
-    let start = Date()
-    try block()
-    let end = Date()
-    print("[\(name)]方法调用时间：\(end.timeIntervalSince(start)) 秒")
-  }
   /// A description Get Headlines
   /// - Parameters:
   ///
@@ -48,19 +40,7 @@ public class OrgSource {
   ///
   /// - Throws:
   public func refreshTree() throws {
-    try measureTime(
-      name: "refreshTree",
-      block: {
-        if let treeBound = self.tree?.rootNode?.range.upperBound {
-          if treeBound > self.source.count {
-            self.tree = parser.parse(self.source)
-            return
-          }
-        }
-        // self.tree = parser.parse(self.source)
-        self.tree = parser.parse(tree: self.tree, string: self.source)
-      })
-
+    self.tree = parser.parse(self.source)
   }
 
   /// A description Regresh OrgHeadline
@@ -69,14 +49,9 @@ public class OrgSource {
   /// - Throws:
   public func refreshOrgHeadlines() throws {
     try refreshTree()
-    try measureTime(
-      name: "getAllHeadlines",
-      block: {
-        if let root = self.tree?.rootNode {
-          try getAllHeadlines(root: root)
-        }
-      }
-    )
+    if let root = self.tree?.rootNode {
+      try getAllHeadlines(root: root)
+    }
   }
 
   /// A description Flush new source to file and refresh headlines.
@@ -84,77 +59,24 @@ public class OrgSource {
   ///
   /// - Throws:
   public func flush() throws {
-    try self.source.write(toFile: self.filePath, atomically: true, encoding: .utf8)
+    try self.source.write(toFile: self.filePath, atomically: false, encoding: .utf8)
     try refreshOrgHeadlines()
   }
 
-  /// A description Query Exist Headline
-  /// - Parameters:
-  ///   - headline: OrgHeadline
-  ///   - type: QueryType, default is .id
-  ///
-  /// - Returns: OrgHeadline?
-  public func queryExistHeadline(headline: OrgHeadline, type: QueryType = .id) -> OrgHeadline? {
-    switch type {
-    case .info:
-      return queryExistHeadlineByInfo(headline: headline)
-    case .id:
-      return queryExistHeadlineById(headline: headline)
-    }
-  }
-
-  /// A description Query Exist Headline By Info
-  /// - Parameter headline: OrgHeadline
-  /// - Returns: OrgHeadline?
-  public func queryExistHeadlineByInfo(headline: OrgHeadline) -> OrgHeadline? {
-    let level = headline.level
-    let title = headline.title
-    let priority = headline.priority
-    let statue = headline.status
-    let headlines = headline.level == 1 ? self.headlines : self.getAllH2s()
-    return headlines.first { headline in
-      title == headline.title
-        && priority == headline.priority
-        && statue == headline.status
-        && level == headline.level
-    }
+  /// A description Flush some headlines to file.
+  /// - Parameter headlines: OrgHeadline array
+  /// - Throws:
+  public func flushHeadlines(headlines: [OrgHeadline]) throws {
+    self.source = headlines.map { $0.toOrgStr() }.joined()
+    try self.flush()
   }
 
   /// A description Get all Headline2 array
   /// - Parameters:
   ///
   /// - Returns: [OrgHeadline]
-  func getAllH2s() -> [OrgHeadline] {
+  public func getAllH2s() -> [OrgHeadline] {
     return self.headlines.map { $0.children }.flatMap { $0 }
-  }
-
-  /// A description query exist headline by id
-  /// - Parameter headline: OrgHeadline
-  /// - Returns: OrgHeadline?
-  public func queryExistHeadlineById(headline: OrgHeadline) -> OrgHeadline? {
-    let property =
-      headline.level == 1 ? OrgPropertyKeys.listId.rawValue : OrgPropertyKeys.externalId.rawValue
-    // "LIST-ID" : "EXTERNAL-ID"
-    let headlines = headline.level == 1 ? self.headlines : self.getAllH2s()
-    if let id = headline.properties[property] {
-      return headlines.first { id == $0.properties[property] }
-    }
-    return nil
-  }
-
-  /// A description get Node Range
-  /// - Parameter node: Node
-  /// - Returns: Range<String.Index>?
-  public func getNodeRange(node: Node) -> Range<String.Index>? {
-    return nsRangeToRange(nsRange: node.range)
-  }
-
-  /// A description Convert NSRange to Range<String.Index>?
-  /// - Parameter nsRange: NSRange
-  /// - Returns: Range<String.Index>?
-  func nsRangeToRange(nsRange: NSRange) -> Range<String.Index>? {
-    let source = self.source
-    return Range(nsRange, in: source)
   }
 
   /// A description Read content from file.
@@ -170,29 +92,15 @@ public class OrgSource {
     }
   }
 
-  /// A description Get all Sections in the children of node.
-  /// - Parameter node: Node
-  /// - Returns: [Node]
-  func getAllSections(node: Node) -> [Node] {
-    var sections: [Node] = []
-    for i in 0...node.namedChildCount {
-      if let child = node.namedChild(at: i) {
-        if child.nodeType == "section" {
-          sections.append(child)
-        }
-      }
-    }
-    return sections
-  }
-
   /// A description get all headline in root.
   /// - Parameter root: Node
   /// - Throws:
   func getAllHeadlines(root: Node) throws {
-    let h1Sections: [Node] = getAllSections(node: root)
+    self.headlines = []
+    let h1Sections: [Node] = root.findChildren(type: OrgTreeSitterType.section)
     for h1Section in h1Sections {
       let headline1 = try toOrgHeadline(from: h1Section)
-      let h2Sections = getAllSections(node: h1Section)
+      let h2Sections = h1Section.findChildren(type: OrgTreeSitterType.section)
       for h2Section in h2Sections {
         let headline2 = try toOrgHeadline(from: h2Section)
         headline2.parent = headline1
@@ -202,103 +110,78 @@ public class OrgSource {
     }
   }
 
-  /// A description Find child when the type equal `type`
-  /// - Parameters:
-  ///   - node: Node
-  ///   - type: String
-  ///
-  /// - Returns: Node?
-  func findChildUntil(node: Node, type: String) -> Node? {
-    for i in 0...node.namedChildCount {
-      if let child = node.namedChild(at: i) {
-        if child.nodeType == type {
-          return child
-        }
-      }
-    }
-    return nil
-  }
-
-  /// A description Get Node text.
-  /// - Parameter node: Node
-  /// - Returns: String
-  func getNodeText(node: Node) -> String {
-    let source = self.source
-    if let range = getNodeRange(node: node) {
-      return String(source[range])
-    }
-    return ""
-  }
-
   /// A description Convert node to OrgHeadline
   /// - Parameter from: Node
   /// - Throws:
   /// - Returns: OrgHeadline
   func toOrgHeadline(from: Node) throws -> OrgHeadline {
-    let headline = OrgHeadline(node: from)
-    guard let tsHeadline = findChildUntil(node: from, type: "headline"),
-      let starts = findChildUntil(node: tsHeadline, type: "stars")
+    let headline = OrgHeadline()
+    guard let tsHeadline = from.findChildUntil(type: OrgTreeSitterType.headline),
+      let starts = tsHeadline.findChildUntil(type: OrgTreeSitterType.stars)
     else {
       return headline
     }
     headline.level = starts.range.length
-    guard let items = findChildUntil(node: tsHeadline, type: "item") else {
+    guard let items = tsHeadline.findChildUntil(type: OrgTreeSitterType.item) else {
       return headline
     }
     var index = 0
-    guard let item = items.child(at: index)
-
-    else {
-      return headline
+    // Optional: TODO DONE
+    if let item = items.child(at: index) {
+      let itemText = item.getText(source: source)
+      if OrgStatus.contains(itemText) {
+        headline.status = itemText
+        index += 1
+      }
     }
-    var itemText = getNodeText(node: item)
-    if ["TODO", "DONE"].contains(itemText) {
-      headline.status = itemText
-      index = index + 1
+    // Optional: Priority: [#A] [#B] [#C]
+    if let item = items.child(at: index) {
+      let itemText = item.getText(source: source)
+      if OrgPriority.contains(itemText) {
+        headline.priority = itemText
+        index += 1
+      }
     }
-    guard let item = items.child(at: index)
-
-    else {
-      return headline
+    // Org Headline title.
+    if let item = items.child(at: index),
+      let last = items.lastChild,
+      let lowerBoundIndex = item.getLowerBoundIndex(source: self.source),
+      let upperBoundIndex = last.getUpperBoundIndex(source: self.source)
+    {
+      let range = lowerBoundIndex..<upperBoundIndex
+      headline.title = removeStatisticMarks(from: String(self.source[range]))
     }
-    itemText = getNodeText(node: item)
-    if ["[#A]", "[#B]", "[#C]"].contains(itemText) {
-      headline.priority = itemText
-      index = index + 1
+    // Optional tags
+    if let tags = tsHeadline.findChildUntil(type: OrgTreeSitterType.tags) {
+      for i in 0..<tags.namedChildCount {
+        let tag = tags.namedChild(at: i)!
+        let tagText = tag.getText(source: self.source)
+        headline.tags.append(tagText)
+      }
     }
-    guard let item = items.child(at: index),
-      let last = items.lastChild
-    else {
-      return headline
+    // Optional Plan
+    if let plans = from.findChildUntil(type: OrgTreeSitterType.plan) {
+      for i in 0..<plans.namedChildCount {
+        let plan = plans.namedChild(at: i)!
+        let key = plan.namedChild(at: 0)!.getText(source: self.source)
+        let value = plan.namedChild(at: 1)!.getText(source: self.source)
+        headline.plans[key] = value
+      }
     }
-    let source = self.source
-
-    let nsRange = NSRange(
-      location: item.range.lowerBound,
-      length: last.range.upperBound - item.range.lowerBound)
-    guard let range = nsRangeToRange(nsRange: nsRange) else {
-      return headline
-    }
-    itemText = String(source[range])
-    headline.title = removeStatisticMarks(from: itemText)
-    guard let propertyDrawer = findChildUntil(node: from, type: "property_drawer") else {
-      return headline
-    }
-    for i in 0...propertyDrawer.namedChildCount {
-      if let child = propertyDrawer.namedChild(at: i) {
-        if let key = child.namedChild(at: 0),
+    if let propertyDrawer = from.findChildUntil(type: OrgTreeSitterType.property_drawer) {
+      for i in 0..<propertyDrawer.namedChildCount {
+        if let child = propertyDrawer.namedChild(at: i),
+          let key = child.namedChild(at: 0),
           let value = child.namedChild(at: 1)
         {
-          headline.properties[getNodeText(node: key)] = getNodeText(node: value)
+          headline.properties[key.getText(source: source)] = value.getText(source: source)
         }
       }
     }
-    guard let body = findChildUntil(node: from, type: "body") else {
-      return headline
-    }
-    let bodyStr = getNodeText(node: body).trimmingCharacters(in: .whitespacesAndNewlines)
-    if !bodyStr.isEmpty {
-        headline.content = bodyStr
+    if let body = from.findChildUntil(type: OrgTreeSitterType.body) {
+      let trimmedString = body.getText(source: source).trimmingCharacters(
+        in: .whitespacesAndNewlines)
+      headline.content = trimmedString.isEmpty == true ? nil : trimmedString
     }
     return headline
   }

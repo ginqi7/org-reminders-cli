@@ -5,17 +5,6 @@ import OrgLibrary
 import RemindersLibrary
 
 public class ModelConverter {
-  public var dateFormat = "yyyy-MM-dd HH:mm:ss"
-  public var dateFormatter = DateFormatter()
-
-  public init() {
-    dateFormatter.dateFormat = dateFormat
-  }
-
-  private enum ConverterType: String {
-    case org
-    case reminder
-  }
 
   /// A description Convert OrgHeadline to CommonList
   /// - Parameter headline: OrgHeadline
@@ -40,27 +29,34 @@ public class ModelConverter {
       title: headline.title,
       list: toCommonList(headline: headline.parent!)
     )
-    if let listName = headline.parent?.title {
-      commonReminder.listName = listName
-    }
-
     if let priority = headline.priority {
       commonReminder.priority = toRemindersPriority(orgPriority: priority)
     }
     if let status = headline.status {
       commonReminder.isCompleted = status == "DONE"
     }
-    if let closed = headline.closed {
-      commonReminder.completionDate = strToDate(str: closed)
+    if let closed = headline.plans[OrgPlan.closed.rawValue] {
+      commonReminder.completionDate = CommonDate(
+        dateText: closed, format: OrgDateFormat.closed.rawValue)
     }
-    if let scheduled = headline.scheduled {
-      commonReminder.dueDate = strToDate(str: scheduled)
+    if let scheduled = headline.plans[OrgPlan.scheduled.rawValue] {
+      commonReminder.dueDate = CommonDate(
+        dateText: scheduled, format: OrgDateFormat.scheduled.rawValue)
     }
     if let lastModified = headline.properties[OrgPropertyKeys.lastModified.rawValue] {
-      commonReminder.lastModified = strToDate(str: lastModified)
+      commonReminder.lastModified = CommonDate(dateText: lastModified)
     }
     if let externalId = headline.properties[OrgPropertyKeys.externalId.rawValue] {
       commonReminder.externalId = externalId
+    }
+    if let notes = headline.content {
+      commonReminder.notes = notes.trimmingBlank()
+    }
+    if headline.tags.contains("DELETED") {
+      commonReminder.isDeleted = true
+    }
+    if let hash = headline.properties[OrgPropertyKeys.hash.rawValue] {
+      commonReminder.hash = hash
     }
     return commonReminder
   }
@@ -103,19 +99,24 @@ public class ModelConverter {
   /// - Parameter reminder: EKReminder
   /// - Returns: CommonReminder
   func toCommonReminder(reminder: EKReminder) -> CommonReminder {
-    let orgReminder = CommonReminder(
+    let commonReminder = CommonReminder(
       title: reminder.title, list: toCommonList(calendar: reminder.calendar))
-    orgReminder.externalId = reminder.calendarItemExternalIdentifier
-    orgReminder.priority = reminder.priority
-    orgReminder.isCompleted = reminder.isCompleted
-    orgReminder.isDeleted = false
-    orgReminder.dueDate = reduceTimePrecision(from: reminder.dueDateComponents?.date)
-    orgReminder.completionDate = reduceTimePrecision(from: reminder.completionDate)
-    orgReminder.lastModified = reduceTimePrecision(from: reminder.lastModifiedDate)
-    orgReminder.listName = reminder.calendar.title
-    orgReminder.listId = reminder.calendar.calendarIdentifier
-    orgReminder.notes = reminder.notes
-    return orgReminder
+    commonReminder.externalId = reminder.calendarItemExternalIdentifier
+    commonReminder.priority = reminder.priority
+    commonReminder.isCompleted = reminder.isCompleted
+    commonReminder.isDeleted = false
+    if let date = reminder.dueDateComponents?.date {
+      commonReminder.dueDate = CommonDate(date: date, format: OrgDateFormat.scheduled.rawValue)
+    }
+    if let date = reminder.completionDate {
+      commonReminder.completionDate = CommonDate(date: date, format: OrgDateFormat.closed.rawValue)
+    }
+    if let date = reminder.lastModifiedDate {
+      commonReminder.lastModified = CommonDate(date: date)
+    }
+    commonReminder.notes = reminder.notes?.trimmingBlank()
+    commonReminder.hash = commonReminder.computeHash()
+    return commonReminder
   }
 
   /// A description Convert CommonList and CommonReminder array to OrgHeadline
@@ -177,20 +178,18 @@ public class ModelConverter {
       headline.properties[OrgPropertyKeys.externalId.rawValue] = id
     }
     if let lastModified = reminder.lastModified {
-      headline.properties[OrgPropertyKeys.lastModified.rawValue] = dateToStr(
-        date: lastModified)
+      headline.properties[OrgPropertyKeys.lastModified.rawValue] = lastModified.dateText
     }
     if let dueDate = reminder.dueDate {
-      headline.scheduled = dateToStr(date: dueDate)
+      headline.plans[OrgPlan.scheduled.rawValue] = dueDate.dateText
     }
     if let closed = reminder.completionDate {
-      headline.closed = dateToStr(date: closed)
+      headline.plans[OrgPlan.closed.rawValue] = closed.dateText
     }
     if let notes = reminder.notes {
       headline.content = notes
     }
-    let hash = headline.computeHash()
-    headline.properties[OrgPropertyKeys.hash.rawValue] = hash
+    headline.properties[OrgPropertyKeys.hash.rawValue] = reminder.hash
     return headline
   }
 
@@ -214,6 +213,21 @@ public class ModelConverter {
     }
   }
 
+  func toRemindersPriority(priority: Int) -> Priority {
+    switch priority {
+    case 0:
+      return Priority.none
+    case 1:
+      return Priority.low
+    case 5:
+      return Priority.medium
+    case 9:
+      return Priority.high
+    default:
+      return Priority.none
+    }
+  }
+
   /// A description Convert Reminders Priority to org Priority
   /// - Parameter reminderPriority: Int
   /// - Returns: String?
@@ -229,37 +243,4 @@ public class ModelConverter {
       return nil
     }
   }
-
-  /// A description Reduce Time Precision, don't need microsecond
-  /// - Parameter date: Date?
-  /// - Returns:
-  func reduceTimePrecision(from date: Date?) -> Date? {
-    guard let date = date else {
-      return nil
-    }
-
-    let calendar = Calendar.current
-    let components = calendar.dateComponents(
-      [.year, .month, .day, .hour, .minute, .second], from: date)
-    return calendar.date(from: components)
-  }
-
-  /// A description Convert date string to Date object
-  /// - Parameter str: date string
-  /// - Returns: Date?
-  public func strToDate(str: String) -> Date? {
-    return self.dateFormatter.date(from: str)
-  }
-
-  /// A description Convert date to format string
-  /// - Parameter date: Data?
-  /// - Returns: String
-
-  public func dateToStr(date: Date?) -> String? {
-    guard let date = date else {
-      return nil
-    }
-    return self.dateFormatter.string(from: date)
-  }
-
 }
