@@ -10,8 +10,12 @@ public class ModelConverter {
   /// - Parameter headline: OrgHeadline
   /// - Returns: CommonList
   func toCommonList(headline: OrgHeadline) -> CommonList {
-    return CommonList(
+    let commonList = CommonList(
       title: headline.title, id: headline.properties[OrgPropertyKeys.listId.rawValue])
+    if headline.tags.contains("DELETED") {
+      commonList.isDeleted = true
+    }
+    return commonList
   }
 
   /// A description Convert OrgHeadline array to CommonList array

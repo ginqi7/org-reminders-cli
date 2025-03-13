@@ -3,7 +3,7 @@ import Foundation
 public class CommonList: Encodable, Hashable {
   public var id: String?
   public var title: String
-
+  public var isDeleted: Bool = false
   public static func == (lhs: CommonList, rhs: CommonList) -> Bool {
     return lhs.id == rhs.id && lhs.title == rhs.title
   }
