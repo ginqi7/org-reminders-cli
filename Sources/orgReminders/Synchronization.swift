@@ -1,5 +1,6 @@
 import CommonLibrary
 import Dispatch
+import EventKit
 import Foundation
 import OrgLibrary
 import RemindersLibrary
@@ -61,8 +62,20 @@ public class Synchronization {
       .forEach { actionToOrg(action: .delete, value: $0.first!) }
   }
 
+  @objc func handleRemindersChange() {
+    print("Reminders changed")
+    do {
+      try syncOnce()
+    } catch let (error) {
+      print("Sync Error: \(error)")
+    }
+  }
+
   func syncAuto() throws {
-    startPolling()
+    let store = EKEventStore()
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(handleRemindersChange), name: .EKEventStoreChanged,
+      object: store)
     monitorFileChanges()
   }
 
@@ -159,7 +172,7 @@ public class Synchronization {
 
   func syncList(orgList: CommonList, remindersList: CommonList) throws {
     if orgList.isDeleted {
-      try reminders.deleteList(query: orgList.id!)
+      let _ = try reminders.deleteList(query: orgList.id!)
     }
     if orgList.title != remindersList.title {
       actionToOrg(action: .update, value: remindersList)
@@ -222,7 +235,7 @@ public class Synchronization {
   func actionToOrg<T>(action: SyncLogger.Action, value: T) {
     self.logger.target = .org
     self.logger.action = action
-    self.logger.value = value as! Encodable
+    self.logger.value = value as? Encodable
     self.logger.log()
   }
 
