@@ -203,11 +203,11 @@ public class ModelConverter {
   func toRemindersPriority(orgPriority: String?) -> Int {
     if let priority = orgPriority {
       switch priority {
-      case "A":
+      case "[#A]":
         return 1
-      case "B":
+      case "[#B]":
         return 5
-      case "C":
+      case "[#C]":
         return 9
       default:
         return 0
@@ -246,5 +246,13 @@ public class ModelConverter {
     default:
       return nil
     }
+  }
+
+  func dateToDateComponents(date: Date?) -> DateComponents? {
+    guard let date = date else {
+      return nil
+    }
+    let calendar = Calendar.current
+    return calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
   }
 }

@@ -225,7 +225,8 @@ public class Synchronization {
         newNotes: orgItem.notes,
         url: nil,
         isCompleted: orgItem.isCompleted,
-        priority: orgItem.priority
+        priority: orgItem.priority,
+        dueDateComponents: self.converter.dateToDateComponents(date: orgItem.dueDate?.date)
       ) {
         updateReminder = self.converter.toCommonReminder(reminder: reminder)
       }

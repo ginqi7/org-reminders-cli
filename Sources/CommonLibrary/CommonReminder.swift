@@ -39,7 +39,7 @@ public class CommonReminder: Encodable {
     let title = self.title
     let isCompleted = self.isCompleted
     let isDeleted = self.isDeleted
-    let dueDate = String(describing: self.dueDate)
+    let dueDate = self.dueDate?.dateText ?? ""
     let notes = self.notes ?? ""
     return sha256Hash("\(title)\(priority)\(isCompleted)\(isDeleted)\(dueDate)\(notes)")
   }
