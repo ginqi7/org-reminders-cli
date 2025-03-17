@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import OrgLibrary
+import RemindersLibrary
 
 public enum SyncType: String, ExpressibleByArgument {
   case all, auto, once
@@ -25,7 +26,7 @@ private struct UpdateHash: ParsableCommand {
 
   func run() {
     do {
-      let sync = try Synchronization(filePath: fileName, logLevel: self.logLevel)
+      let sync = try Synchronization(filePath: fileName, logLevel: self.logLevel, frequency: 1)
       try sync.updateHash()
     } catch let error {
       print(error)
@@ -51,9 +52,24 @@ private struct Sync: ParsableCommand {
     help: "Log Level, either of 'info' or 'debug'")
   var logLevel: LogLevel = .info
 
+  @Option(
+    name: .shortAndLong,
+    help: "Sync frequency")
+  var frequency: Int = 1
+
+  @Option(
+    name: .shortAndLong,
+    help: "Display Options: all or incompleted or completed")
+  var displayOptions: DisplayOptions = .all
+
   func run() {
     do {
-      let sync = try Synchronization(filePath: fileName, logLevel: self.logLevel)
+      let sync = try Synchronization(
+        filePath: fileName,
+        logLevel: self.logLevel,
+        frequency: self.frequency,
+        displayOptions: self.displayOptions
+      )
       sync.sync(type: self.type)
     } catch let error {
       print(error)

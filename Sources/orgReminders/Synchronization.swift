@@ -13,13 +13,18 @@ public class Synchronization {
   var logger: SyncLogger
   var frequency: Int = 1
   var saveCount: Int = 0
+  var displayOptions: DisplayOptions = .all
 
-  init(filePath: String, logLevel: LogLevel) throws {
+  init(filePath: String, logLevel: LogLevel, frequency: Int, displayOptions: DisplayOptions = .all)
+    throws
+  {
     self.filePath = filePath
     self.orgSource = try OrgSource(filePath: filePath)
     self.converter = ModelConverter()
     self.reminders = Reminders()
     self.logger = SyncLogger(level: logLevel)
+    self.frequency = frequency
+    self.displayOptions = displayOptions
   }
 
   func sync(type: SyncType) {
@@ -107,7 +112,7 @@ public class Synchronization {
   func fetchAllFromReminders() -> ([CommonList], [CommonReminder]) {
     let remindersLists = self.converter.toCommonLists(calendars: self.reminders.getLists())
     let remindersItems = self.converter.toCommonReminders(
-      reminders: self.reminders.allReminders(displayOptions: .all))
+      reminders: self.reminders.allReminders(displayOptions: displayOptions))
     return (remindersLists, remindersItems)
   }
 
@@ -200,7 +205,7 @@ public class Synchronization {
     if orgItem.isDeleted {
       actionToReminders(action: .delete, value: orgItem)
       if let reminder = try self.reminders.delete(
-        query: orgItem.externalId!, listQuery: orgItem.list.id!)
+        query: orgItem.externalId!, listQuery: orgItem.list.id!, displayOptions: displayOptions)
       {
         let commonReminder = self.converter.toCommonReminder(reminder: reminder)
         actionToOrg(action: .delete, value: commonReminder)
