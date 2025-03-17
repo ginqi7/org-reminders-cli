@@ -11,6 +11,8 @@ public class Synchronization {
   var orgSource: OrgSource
   var reminders: Reminders
   var logger: SyncLogger
+  var frequency: Int = 1
+  var saveCount: Int = 0
 
   init(filePath: String, logLevel: LogLevel) throws {
     self.filePath = filePath
@@ -63,12 +65,7 @@ public class Synchronization {
   }
 
   @objc func handleRemindersChange() {
-    print("Reminders changed")
-    do {
-      try syncOnce()
-    } catch let (error) {
-      print("Sync Error: \(error)")
-    }
+    logSync()
   }
 
   func syncAuto() throws {
@@ -269,18 +266,12 @@ public class Synchronization {
     return nil
   }
 
-  func startPolling() {
-    DispatchQueue.global().async {
-      while true {
-        do {
-          try self.syncOnce()
-        } catch let error {
-          print("Failed to sync reminders with error: \(error)")
-          exit(1)
-        }
-        Thread.sleep(forTimeInterval: 10)  // 等待 10 秒
-      }
-    }
+  func logSync() {
+    let logger = SyncLogger()
+    logger.action = .sync
+    logger.target = .org
+    logger.value = CommonList(title: "0", id: "0")
+    logger.log()
   }
 
   func monitorFileChanges() {
@@ -297,6 +288,11 @@ public class Synchronization {
       do {
         dispatchSource.suspend()
         try self.updateHash()
+        self.saveCount += 1
+        if self.saveCount == self.frequency {
+          self.logSync()
+          self.saveCount = 0
+        }
         dispatchSource.resume()
       } catch let error {
         print("Failed to sync reminders with error: \(error)")

@@ -8,7 +8,7 @@ public class SyncLogger {
   var value: Encodable?
 
   public init(
-    level: LogLevel,
+    level: LogLevel = .info,
     target: Target? = nil,
     action: Action? = nil,
     value: Encodable? = nil
@@ -28,6 +28,7 @@ public class SyncLogger {
     case add = "Add"
     case delete = "Delete"
     case update = "Update"
+    case sync = "Sync"
   }
 
   func getId() -> String {

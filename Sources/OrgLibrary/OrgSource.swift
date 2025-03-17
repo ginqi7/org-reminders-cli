@@ -154,18 +154,20 @@ public class OrgSource {
     // Optional tags
     if let tags = tsHeadline.findChildUntil(type: OrgTreeSitterType.tags) {
       for i in 0..<tags.namedChildCount {
-        let tag = tags.namedChild(at: i)!
-        let tagText = tag.getText(source: self.source)
-        headline.tags.append(tagText)
+        if let tagText = tags.namedChild(at: i)?.getText(source: self.source) {
+          headline.tags.append(tagText)
+        }
       }
     }
     // Optional Plan
     if let plans = from.findChildUntil(type: OrgTreeSitterType.plan) {
       for i in 0..<plans.namedChildCount {
-        let plan = plans.namedChild(at: i)!
-        let key = plan.namedChild(at: 0)!.getText(source: self.source)
-        let value = plan.namedChild(at: 1)!.getText(source: self.source)
-        headline.plans[key] = value
+        if let plan = plans.namedChild(at: i),
+          let key = plan.namedChild(at: 0)?.getText(source: self.source),
+          let value = plan.namedChild(at: 1)?.getText(source: self.source)
+        {
+          headline.plans[key] = value
+        }
       }
     }
     if let propertyDrawer = from.findChildUntil(type: OrgTreeSitterType.property_drawer) {
