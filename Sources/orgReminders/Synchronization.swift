@@ -27,6 +27,27 @@ public class Synchronization {
     self.displayOptions = displayOptions
   }
 
+  func startListeningForInput() {
+    let inputQueue = DispatchQueue(label: "inputQueue")
+
+    inputQueue.async {
+      while true {
+        if let input = readLine() {
+          if input == "Sync Once" {
+            do {
+              try self.syncOnce()
+            } catch {
+              print("Error occurred while syncing: \(error)")
+            }
+          }
+
+        } else {
+          print("Input Error")
+        }
+      }
+    }
+  }
+
   func sync(type: SyncType) {
     do {
       switch type {
@@ -74,6 +95,7 @@ public class Synchronization {
   }
 
   func syncAuto() throws {
+    startListeningForInput()
     let store = EKEventStore()
     NotificationCenter.default.addObserver(
       self, selector: #selector(handleRemindersChange), name: .EKEventStoreChanged,
@@ -273,7 +295,7 @@ public class Synchronization {
   }
 
   func logSync() {
-    let logger = SyncLogger()
+    let logger = self.logger
     logger.action = .sync
     logger.target = .org
     logger.value = CommonList(title: "0", id: "0")
