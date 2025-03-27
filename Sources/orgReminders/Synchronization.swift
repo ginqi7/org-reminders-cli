@@ -14,8 +14,12 @@ public class Synchronization {
   var frequency: Int = 1
   var saveCount: Int = 0
   var displayOptions: DisplayOptions = .all
+  public var bridgeAction: ((SyncLogger) -> Void)?
 
-  init(filePath: String, logLevel: LogLevel, frequency: Int, displayOptions: DisplayOptions = .all)
+  init(
+    filePath: String, logLevel: LogLevel, frequency: Int,
+    displayOptions: DisplayOptions = .all
+  )
     throws
   {
     self.filePath = filePath
@@ -65,7 +69,8 @@ public class Synchronization {
     }
   }
 
-  func updateHash() throws {
+  func updateHash() throws -> Bool {
+    var updated = false
     try self.orgSource.refreshSource()
     try self.orgSource.refreshOrgHeadlines()
     let items = self.orgSource.getAllH2s().map {
@@ -74,11 +79,13 @@ public class Synchronization {
     deleteRepeatedItem(items: items)
     for item in items {
       if let hash = item.modified() {
+        updated = true
         item.hash = hash
         item.lastModified = CommonDate()
         actionToOrg(action: .update, value: item)
       }
     }
+    return updated
   }
 
   func deleteRepeatedItem(items: [CommonReminder]) {
@@ -95,7 +102,7 @@ public class Synchronization {
   }
 
   func syncAuto() throws {
-    startListeningForInput()
+    // startListeningForInput()
     let store = EKEventStore()
     NotificationCenter.default.addObserver(
       self, selector: #selector(handleRemindersChange), name: .EKEventStoreChanged,
@@ -261,14 +268,17 @@ public class Synchronization {
     self.logger.target = .org
     self.logger.action = action
     self.logger.value = value as? Encodable
-    self.logger.log()
+    if let bridgeAction = self.bridgeAction {
+      bridgeAction(logger)
+    }
+    // self.logger.log()
   }
 
   func actionToReminders(action: SyncLogger.Action, value: Encodable) {
     self.logger.target = .reminders
     self.logger.action = action
     self.logger.value = value
-    self.logger.log()
+    // self.logger.log()
   }
 
   func addReminderToReminders(item: CommonReminder) throws -> CommonReminder? {
@@ -299,7 +309,10 @@ public class Synchronization {
     logger.action = .sync
     logger.target = .org
     logger.value = CommonList(title: "0", id: "0")
-    logger.log()
+    // logger.log()
+    if let bridgeAction = self.bridgeAction {
+      bridgeAction(logger)
+    }
   }
 
   func monitorFileChanges() {
@@ -315,10 +328,12 @@ public class Synchronization {
     dispatchSource.setEventHandler {
       do {
         dispatchSource.suspend()
-        try self.updateHash()
+        let updated = try self.updateHash()
         self.saveCount += 1
         if self.saveCount == self.frequency {
-          self.logSync()
+          if updated {
+            self.logSync()
+          }
           self.saveCount = 0
         }
         dispatchSource.resume()

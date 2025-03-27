@@ -41,6 +41,16 @@ public class SyncLogger {
     return ""
   }
 
+  public func getBase64() -> String {
+    let value = self.value!
+    let valueJson = toJson(data: value)
+    return toBase64(originalString: valueJson) ?? ""
+  }
+
+  public func getType() -> String {
+    return String(describing: type(of: self.value!))
+  }
+
   public func log() {
     let time = Date()
     let id = self.getId()

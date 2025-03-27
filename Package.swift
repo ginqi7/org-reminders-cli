@@ -14,7 +14,7 @@ let package = Package(
     .package(url: "https://github.com/ChimeHQ/SwiftTreeSitter", branch: "main"),
     .package(url: "https://github.com/ginqi7/tree-sitter-org", branch: "main"),
     .package(url: "https://github.com/ginqi7/reminders-cli", branch: "main"),
-
+    .package(url: "https://github.com/ginqi7/websocket-bridge-swift", branch: "main"),
   ],
   targets: [
     .executableTarget(
@@ -22,6 +22,7 @@ let package = Package(
       dependencies: [
         "OrgLibrary",
         .product(name: "RemindersLibrary", package: "reminders-cli"),
+        .product(name: "WebsocketBridgeLibrary", package: "websocket-bridge-swift"),
       ]
     ),
     .target(
@@ -31,7 +32,6 @@ let package = Package(
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
         .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter"),
         .product(name: "TreeSitterOrg", package: "tree-sitter-org"),
-
       ]
     ),
     .target(

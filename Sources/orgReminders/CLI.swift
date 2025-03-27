@@ -27,7 +27,7 @@ private struct UpdateHash: ParsableCommand {
   func run() {
     do {
       let sync = try Synchronization(filePath: fileName, logLevel: self.logLevel, frequency: 1)
-      try sync.updateHash()
+      let _ = try sync.updateHash()
     } catch let error {
       print(error)
     }
@@ -77,6 +77,27 @@ private struct Sync: ParsableCommand {
   }
 }
 
+private struct WebsocketBridge: ParsableCommand {
+  static let configuration = CommandConfiguration(
+    abstract: "WebsocketBridge")
+
+  @Argument(
+    help: "appName")
+  var appName: String
+
+  @Argument(
+    help: "serverPort")
+  var serverPort: String
+
+  func run() {
+    do {
+      let _ = try OrgRemindersBridge(appName: appName, serverPort: serverPort)
+    } catch let error {
+      print(error)
+    }
+  }
+}
+
 public struct CLI: ParsableCommand {
   public static let configuration = CommandConfiguration(
     commandName: "reminders",
@@ -84,6 +105,7 @@ public struct CLI: ParsableCommand {
     subcommands: [
       UpdateHash.self,
       Sync.self,
+      WebsocketBridge.self,
     ]
   )
 
