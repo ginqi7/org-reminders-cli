@@ -100,8 +100,9 @@ private struct WebsocketBridge: ParsableCommand {
 
 public struct CLI: ParsableCommand {
   public static let configuration = CommandConfiguration(
-    commandName: "reminders",
-    abstract: "Interact with macOS Reminders from the command line",
+    commandName: "org-reminders",
+    abstract:
+      "A CLI tool for syncing OS X Reminders with Emacs org-mode, designed to work with ginqi7/org-reminders.",
     subcommands: [
       UpdateHash.self,
       Sync.self,
