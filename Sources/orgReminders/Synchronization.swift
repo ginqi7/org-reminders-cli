@@ -22,8 +22,10 @@ public class Synchronization {
   )
     throws
   {
-    self.filePath = filePath
-    self.orgSource = try OrgSource(filePath: filePath)
+    // Convert to absolute file path. like "~/Reminders.org" to "/root/Reminders.org"
+    let expandedPath = NSString(string: filePath).expandingTildeInPath
+    self.filePath = expandedPath
+    self.orgSource = try OrgSource(filePath: expandedPath)
     self.converter = ModelConverter()
     self.reminders = Reminders()
     self.logger = SyncLogger(level: logLevel)
@@ -317,6 +319,7 @@ public class Synchronization {
 
   func monitorFileChanges() {
     let fileURL = URL(fileURLWithPath: self.filePath)
+
     let fileDescriptor = open(fileURL.path, O_EVTONLY)
 
     let dispatchSource = DispatchSource.makeFileSystemObjectSource(
