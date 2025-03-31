@@ -34,6 +34,8 @@ jobs:
             end
           end" > Formula/org-reminders-cli.rb
           git add Formula/org-reminders-cli.rb
+          git -c user.name='github actions by ${{ github.actor }}' -c user.email='NO' \
+          commit -m "Update org-reminders-cli to version ${{ steps.get_release.outputs.tag }}"
           git status
           cat Formula/org-reminders-cli.rb
           echo "Tag: ${{ steps.get_release.outputs.tag }}"
