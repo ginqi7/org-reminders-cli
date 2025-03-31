@@ -1,4 +1,5 @@
 import Foundation
+import RemindersLibrary
 import WebsocketBridgeLibrary
 
 public class OrgRemindersBridge {
@@ -48,8 +49,13 @@ public class OrgRemindersBridge {
   public init(appName: String, serverPort: String) throws {
     self.bridge.onMessage = self.onMessage
     self.bridge.connect(appName: appName, serverPort: serverPort)
-    if let file = self.bridge.getEmacsVar(varName: "org-reminders-sync-file") {
-      sync = try Synchronization(filePath: file, logLevel: .info, frequency: 1)
+    if let file = self.bridge.getEmacsVar(varName: "org-reminders-sync-file"),
+      let display_options = self.bridge.getEmacsVar(varName: "org-reminders-display-options"),
+      let frequency = self.bridge.getEmacsVar(varName: "org-reminders-sync-frequency", example: 0)
+    {
+      let displayOptions: DisplayOptions = DisplayOptions.init(rawValue: display_options)!
+      sync = try Synchronization(
+        filePath: file, logLevel: .info, frequency: frequency, displayOptions: displayOptions)
       sync?.bridgeAction = bridgeAction
       try sync?.syncAuto()
     }
