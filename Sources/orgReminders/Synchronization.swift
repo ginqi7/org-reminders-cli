@@ -251,13 +251,14 @@ public class Synchronization {
       actionToReminders(action: .update, value: orgItem)
       if let reminder = try reminders.updateItem(
         query: orgItem.externalId!,
-        listQuery: orgItem.list.id!,
+        listQuery: remindersItem.list.id!,
         newText: orgItem.title,
         newNotes: orgItem.notes,
         url: nil,
         isCompleted: orgItem.isCompleted,
         priority: orgItem.priority,
-        dueDateComponents: self.converter.dateToDateComponents(date: orgItem.dueDate?.date)
+        dueDateComponents: self.converter.dateToDateComponents(date: orgItem.dueDate?.date),
+        listId: orgItem.list.id
       ) {
         updateReminder = self.converter.toCommonReminder(reminder: reminder)
       }

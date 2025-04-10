@@ -36,12 +36,13 @@ public class CommonReminder: Encodable {
   ///
   /// - Returns: String
   public func computeHash() -> String {
+    let listId = self.list.id ?? ""
     let title = self.title
     let isCompleted = self.isCompleted
     let isDeleted = self.isDeleted
     let dueDate = self.dueDate?.dateText ?? ""
     let notes = self.notes ?? ""
-    return sha256Hash("\(title)\(priority)\(isCompleted)\(isDeleted)\(dueDate)\(notes)")
+    return sha256Hash("\(listId)\(title)\(priority)\(isCompleted)\(isDeleted)\(dueDate)\(notes)")
   }
 
   /// A description Checks if a headline has been modified.
