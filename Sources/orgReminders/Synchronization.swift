@@ -331,12 +331,10 @@ public class Synchronization {
     dispatchSource.setEventHandler {
       do {
         dispatchSource.suspend()
-        let updated = try self.updateHash()
+        let _ = try self.updateHash()
         self.saveCount += 1
         if self.saveCount == self.frequency {
-          if updated {
-            self.logSync()
-          }
+          self.logSync()
           self.saveCount = 0
         }
         dispatchSource.resume()
