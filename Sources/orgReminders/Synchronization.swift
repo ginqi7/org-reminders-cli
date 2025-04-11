@@ -286,13 +286,14 @@ public class Synchronization {
 
   func addReminderToReminders(item: CommonReminder) throws -> CommonReminder? {
     actionToReminders(action: .add, value: item)
-    if let reminder = try reminders.addReminder(
-      string: item.title,
-      notes: item.notes,
-      listQuery: item.list.id!,
-      dueDateComponents: item.dueDate?.toDateComponents(),
-      priority: self.converter.toRemindersPriority(priority: item.priority),
-      url: nil)
+    if let listId = item.list.id,
+      let reminder = try reminders.addReminder(
+        string: item.title,
+        notes: item.notes,
+        listQuery: listId,
+        dueDateComponents: item.dueDate?.toDateComponents(),
+        priority: self.converter.toRemindersPriority(priority: item.priority),
+        url: nil)
     {
       return self.converter.toCommonReminder(reminder: reminder)
     }
