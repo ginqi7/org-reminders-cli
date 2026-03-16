@@ -7,10 +7,6 @@ import RemindersLibrary
 import SQLiteLibrary
 
 public class Synchronization {
-    public enum SyncType: String, ExpressibleByArgument {
-        case all, auto, once
-    }
-
     public enum LogLevel: String, ExpressibleByArgument {
         case info, debug
     }
@@ -21,6 +17,8 @@ public class Synchronization {
     private var sqliteReminder: SQLiteReminder
     private var logger: SyncLogger
     private var eventStore: EKEventStore?
+    private var fileMonitorSource: DispatchSourceFileSystemObject?
+    private var databasePath: String
 
     public init(
         databasePath: String = "reminders.db",
@@ -29,9 +27,9 @@ public class Synchronization {
         self.converter = ModelConverter()
         self.reminders = Reminders()
         self.logger = SyncLogger(level: logLevel)
+        self.databasePath = NSString(string: databasePath).expandingTildeInPath
 
-        let expandedPath = NSString(string: databasePath).expandingTildeInPath
-        self.sqliteList = try SQLiteList(databasePath: expandedPath)
+        self.sqliteList = try SQLiteList(databasePath: self.databasePath)
         self.sqliteReminder = try self.sqliteList.createSQLiteReminder()
     }
 
@@ -39,43 +37,7 @@ public class Synchronization {
         if let eventStore = eventStore {
             NotificationCenter.default.removeObserver(self, name: .EKEventStoreChanged, object: eventStore)
         }
-    }
-
-    public func sync(type: SyncType) {
-        do {
-            switch type {
-            case .auto:
-                try self.syncAuto()
-            case .all:
-                try self.syncAll()
-            default:
-                try self.syncOnce()
-            }
-        } catch {
-            print("Failed to sync reminders with error: \(error)")
-            exit(1)
-        }
-    }
-
-    @objc private func handleRemindersChange() {
-        do {
-            try syncOnce()
-            print("Sync completed due to Reminders change")
-        } catch {
-            print("Sync error: \(error)")
-        }
-    }
-
-    public func syncAuto() throws {
-        eventStore = EKEventStore()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleRemindersChange),
-            name: .EKEventStoreChanged,
-            object: eventStore
-        )
-        print("Auto sync enabled. Listening for Reminders changes...")
-        RunLoop.main.run()
+        fileMonitorSource?.cancel()
     }
 
     public func syncOnce() throws {
@@ -88,20 +50,64 @@ public class Synchronization {
         try syncReminders(remindersItems: remindersItems, sqliteReminders: sqliteReminders)
     }
 
-    public func syncAll() throws {
-        let (remindersLists, remindersItems) = fetchAllFromReminders()
+    public func syncAuto() throws {
+        // Listen for macOS Reminders changes
+        eventStore = EKEventStore()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRemindersChange),
+            name: .EKEventStoreChanged,
+            object: eventStore
+        )
 
-        for list in remindersLists {
-            try self.sqliteList.add(list: list)
-            print("Synced list to SQLite: \(list.title)")
+        // Listen for SQLite database file changes
+        monitorDatabaseFileChanges()
+
+        print("Auto sync enabled. Listening for changes from Reminders and SQLite database...")
+        RunLoop.main.run()
+    }
+
+    @objc private func handleRemindersChange() {
+        performSync(source: "Reminders")
+    }
+
+    private func performSync(source: String) {
+        do {
+            try syncOnce()
+            print("Sync completed (triggered by: \(source))")
+        } catch {
+            print("Sync error: \(error)")
+        }
+    }
+
+    private func monitorDatabaseFileChanges() {
+        let fileDescriptor = open(databasePath, O_EVTONLY)
+
+        guard fileDescriptor >= 0 else {
+            print("Failed to open file descriptor for \(databasePath)")
+            return
         }
 
-        for reminder in remindersItems {
-            try self.sqliteReminder.add(reminder: reminder)
-            print("Synced reminder to SQLite: \(reminder.title)")
+        let dispatchSource = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: .write,
+            queue: DispatchQueue.global()
+        )
+
+        self.fileMonitorSource = dispatchSource
+
+        dispatchSource.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            dispatchSource.suspend()
+            self.performSync(source: "SQLite")
+            dispatchSource.resume()
         }
 
-        print("Sync all completed. \(remindersLists.count) lists and \(remindersItems.count) reminders saved.")
+        dispatchSource.setCancelHandler {
+            close(fileDescriptor)
+        }
+
+        dispatchSource.resume()
     }
 
     private func fetchAllFromReminders() -> ([CommonList], [CommonReminder]) {
@@ -121,11 +127,11 @@ public class Synchronization {
             if let sqliteList = sqliteDict[listId] {
                 if remindersList.title != sqliteList.title {
                     try self.sqliteList.update(list: remindersList)
-                    logAction(action: .update, value: remindersList, target: .sqlite)
+                    logAction(action: .update, value: remindersList)
                 }
             } else {
                 try self.sqliteList.add(list: remindersList)
-                logAction(action: .add, value: remindersList, target: .sqlite)
+                logAction(action: .add, value: remindersList)
             }
         }
 
@@ -133,7 +139,7 @@ public class Synchronization {
             guard let listId = sqliteList.id else { continue }
             if remindersDict[listId] == nil {
                 try self.sqliteList.delete(listId: listId)
-                logAction(action: .delete, value: sqliteList, target: .sqlite)
+                logAction(action: .delete, value: sqliteList)
             }
         }
     }
@@ -148,11 +154,11 @@ public class Synchronization {
             if let sqliteReminder = sqliteDict[externalId] {
                 if try shouldUpdateReminder(reminders: reminder, sqlite: sqliteReminder) {
                     try self.sqliteReminder.update(reminder: reminder)
-                    logAction(action: .update, value: reminder, target: .sqlite)
+                    logAction(action: .update, value: reminder)
                 }
             } else {
                 try self.sqliteReminder.add(reminder: reminder)
-                logAction(action: .add, value: reminder, target: .sqlite)
+                logAction(action: .add, value: reminder)
             }
         }
 
@@ -160,7 +166,7 @@ public class Synchronization {
             guard let externalId = sqliteReminder.externalId else { continue }
             if remindersDict[externalId] == nil {
                 try self.sqliteReminder.delete(externalId: externalId)
-                logAction(action: .delete, value: sqliteReminder, target: .sqlite)
+                logAction(action: .delete, value: sqliteReminder)
             }
         }
     }
@@ -175,9 +181,9 @@ public class Synchronization {
         return false
     }
 
-    private func logAction<T: Encodable>(action: SyncLogger.Action, value: T, target: SyncLogger.Target) {
+    private func logAction<T: Encodable>(action: SyncLogger.Action, value: T) {
         self.logger.action = action
-        self.logger.target = target
+        self.logger.target = .sqlite
         self.logger.value = value
         self.logger.log()
     }
