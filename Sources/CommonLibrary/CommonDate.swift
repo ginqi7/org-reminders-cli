@@ -1,58 +1,47 @@
 import Foundation
 
 public class CommonDate {
-  var _date: Date
-  var _dateText: String
-  public var dateText: String {
-    return _dateText
-  }
-  public var date: Date {
-    return _date
-  }
+    private var _date: Date
+    private var _dateText: String
 
-  var format: String = "yyyy-MM-dd HH:mm:ss"
-  var dateFormatter = DateFormatter()
+    private let format: String
+    private let dateFormatter: DateFormatter
 
-  public init(date: Date = Date(), format: String = "yyyy-MM-dd HH:mm:ss") {
-    self.format = format
-    dateFormatter.dateFormat = format
-    dateFormatter.locale = Locale(identifier: "en_US")
-    self._dateText = self.dateFormatter.string(from: date)
-    /// Reduce Time Precision, don't need microsecond
-    self._date = self.dateFormatter.date(from: _dateText)!
-  }
-
-  public init(dateText: String, format: String = "yyyy-MM-dd HH:mm:ss") {
-    self.format = format
-    self._dateText = dateText
-    dateFormatter.dateFormat = format
-    dateFormatter.locale = Locale(identifier: "en_US")
-    if let _date = self.dateFormatter.date(from: dateText) {
-      self._date = _date
-    } else {
-      print("Error: DateFormatUnmatched: \(dateText) (\(format))")
-      self._date = Date()
+    public var dateText: String {
+        return _dateText
     }
 
-  }
-
-  /// A description Reduce Time Precision, don't need microsecond
-  /// - Parameter date: Date?
-  /// - Returns:
-  func reduceTimePrecision(from date: Date?) -> Date? {
-    guard let date = date else {
-      return nil
+    public var date: Date {
+        return _date
     }
 
-    let calendar = Calendar.current
-    let components = calendar.dateComponents(
-      [.year, .month, .day, .hour, .minute, .second], from: date)
-    return calendar.date(from: components)
-  }
+    public init(date: Date = Date(), format: String = "yyyy-MM-dd HH:mm:ss") {
+        self.format = format
+        self.dateFormatter = DateFormatter()
+        self.dateFormatter.dateFormat = format
+        self.dateFormatter.locale = Locale(identifier: "en_US")
+        self._dateText = self.dateFormatter.string(from: date)
+        // Reduce Time Precision, don't need microsecond
+        self._date = self.dateFormatter.date(from: _dateText) ?? date
+    }
 
-  public func toDateComponents() -> DateComponents {
-    let calendar = Calendar.current
-    return calendar.dateComponents(
-      [.year, .month, .day, .hour, .minute, .second], from: self.date)
-  }
+    public init(dateText: String, format: String = "yyyy-MM-dd HH:mm:ss") throws {
+        self.format = format
+        self.dateFormatter = DateFormatter()
+        self.dateFormatter.dateFormat = format
+        self.dateFormatter.locale = Locale(identifier: "en_US")
+
+        if let parsedDate = self.dateFormatter.date(from: dateText) {
+            self._date = parsedDate
+            self._dateText = dateText
+        } else {
+            throw RemindersSyncError.dateParseError(dateText: dateText, format: format)
+        }
+    }
+
+    public func toDateComponents() -> DateComponents {
+        let calendar = Calendar.current
+        return calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second], from: self.date)
+    }
 }

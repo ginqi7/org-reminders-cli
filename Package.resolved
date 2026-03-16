@@ -11,12 +11,12 @@
         }
       },
       {
-        "package": "Starscream",
-        "repositoryURL": "https://github.com/daltoniam/Starscream.git",
+        "package": "SQLite.swift",
+        "repositoryURL": "https://github.com/stephencelis/SQLite.swift",
         "state": {
           "branch": null,
-          "revision": "c6bfd1af48efcc9a9ad203665db12375ba6b145a",
-          "version": "4.0.8"
+          "revision": "392dd6058624d9f6c5b4c769d165ddd8c7293394",
+          "version": "0.15.4"
         }
       },
       {
@@ -29,39 +29,12 @@
         }
       },
       {
-        "package": "SwiftTreeSitter",
-        "repositoryURL": "https://github.com/ChimeHQ/SwiftTreeSitter",
-        "state": {
-          "branch": "main",
-          "revision": "f0ac935f7da8ccb659f511ddd6453c9483f4e7bc",
-          "version": null
-        }
-      },
-      {
-        "package": "TreeSitter",
-        "repositoryURL": "https://github.com/tree-sitter/tree-sitter",
+        "package": "swift-toolchain-sqlite",
+        "repositoryURL": "https://github.com/swiftlang/swift-toolchain-sqlite",
         "state": {
           "branch": null,
-          "revision": "d97db6d63507eb62c536bcb2c4ac7d70c8ec665e",
-          "version": "0.23.2"
-        }
-      },
-      {
-        "package": "TreeSitterOrg",
-        "repositoryURL": "https://github.com/ginqi7/tree-sitter-org",
-        "state": {
-          "branch": "main",
-          "revision": "b323e37558c409102eff898c8d16c2e6adb7e516",
-          "version": null
-        }
-      },
-      {
-        "package": "WebsocketBridge",
-        "repositoryURL": "https://github.com/ginqi7/websocket-bridge-swift",
-        "state": {
-          "branch": "main",
-          "revision": "77d8ad76da79f367217c2ea26d70f2351670aff9",
-          "version": null
+          "revision": "b626d3002773b1a1304166643e7f118f724b2132",
+          "version": "1.0.4"
         }
       }
     ]

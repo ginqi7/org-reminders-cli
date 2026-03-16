@@ -24,12 +24,12 @@ public class CommonList: Encodable, Hashable {
     try container.encodeIfPresent(self.id, forKey: .id)
   }
 
-  public func toJson() -> String {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let encoded = try! encoder.encode(self)
-    return String(data: encoded, encoding: .utf8) ?? ""
-  }
+    public func toJson() -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let encoded = try? encoder.encode(self)
+        return String(data: encoded ?? Data(), encoding: .utf8) ?? ""
+    }
 
   public init(
     title: String,
