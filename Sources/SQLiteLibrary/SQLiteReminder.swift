@@ -71,6 +71,16 @@ public class SQLiteReminder {
         return try db.prepare(query).compactMap { try? rowToCommonReminder(row: $0) }
     }
 
+    public func getDeletedReminders() throws -> [CommonReminder] {
+        let query = SQLStatic.remindersTable.filter(SQLStatic.deletedCol == true)
+        return try db.prepare(query).compactMap { try? rowToCommonReminder(row: $0) }
+    }
+
+    public func permanentlyDelete(externalId: String) throws {
+        let reminder = SQLStatic.remindersTable.filter(SQLStatic.externalIdCol == externalId)
+        try db.run(reminder.delete())
+    }
+
     private func rowToCommonReminder(row: Row) throws -> CommonReminder {
         let list = CommonList(title: row[SQLStatic.listIdCol], id: row[SQLStatic.listIdCol])
         let reminder = CommonReminder(

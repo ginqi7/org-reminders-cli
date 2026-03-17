@@ -63,4 +63,10 @@ public class SyncLogger {
         let encoded = try? encoder.encode(data)
         return String(data: encoded ?? Data(), encoding: .utf8) ?? ""
     }
+
+    public func debug(_ message: String) {
+        if level == .debug {
+            print("[DEBUG] \(message)")
+        }
+    }
 }
