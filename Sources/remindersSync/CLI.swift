@@ -3,21 +3,40 @@ import Foundation
 import RemindersLibrary
 import SQLiteLibrary
 
-private struct Once: ParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Sync macOS Reminders to SQLite database once")
+enum SyncTarget {
+    case sqlite(path: String)
+    case json(path: String)
+    case yaml(path: String)
+}
 
-    @Option(name: .shortAndLong, help: "SQLite database path")
-    var database: String = "~/reminders.db"
+func detectTarget(from path: String) -> SyncTarget {
+    if path.hasSuffix(".json") { return .json(path: path) }
+    if path.hasSuffix(".yaml") || path.hasSuffix(".yml") { return .yaml(path: path) }
+    return .sqlite(path: path)
+}
+
+private struct Once: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Sync macOS Reminders to storage once (auto-detects format from extension)")
+
+    @Argument(help: "Path to storage: .db for SQLite, .json for JSON, .yaml/.yml for YAML")
+    var targetPath: String
 
     @Option(name: .shortAndLong, help: "Log level: 'info' or 'debug'")
     var logLevel: Synchronization.LogLevel = .info
 
     func run() throws {
         do {
-            let sync = try Synchronization(
-                databasePath: database,
-                logLevel: self.logLevel
-            )
+            let sync: Synchronization
+            switch detectTarget(from: targetPath) {
+            case .sqlite(let path):
+                sync = try Synchronization(databasePath: path, logLevel: self.logLevel)
+            case .json(let path):
+                let fileStorage = JSONFileStorage(filePath: path)
+                sync = Synchronization(fileStorage: fileStorage, logLevel: self.logLevel)
+            case .yaml(let path):
+                let fileStorage = YAMLFileStorage(filePath: path)
+                sync = Synchronization(fileStorage: fileStorage, logLevel: self.logLevel)
+            }
             try sync.syncOnce()
             print("Sync completed successfully")
         } catch {
@@ -27,20 +46,27 @@ private struct Once: ParsableCommand {
 }
 
 private struct Auto: ParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Automatically sync changes between macOS Reminders and SQLite database")
+    static let configuration = CommandConfiguration(abstract: "Automatically sync changes (auto-detects format from extension)")
 
-    @Option(name: .shortAndLong, help: "SQLite database path")
-    var database: String = "~/reminders.db"
+    @Argument(help: "Path to storage: .db for SQLite, .json for JSON, .yaml/.yml for YAML")
+    var targetPath: String
 
     @Option(name: .shortAndLong, help: "Log level: 'info' or 'debug'")
     var logLevel: Synchronization.LogLevel = .info
 
     func run() throws {
         do {
-            let sync = try Synchronization(
-                databasePath: database,
-                logLevel: self.logLevel
-            )
+            let sync: Synchronization
+            switch detectTarget(from: targetPath) {
+            case .sqlite(let path):
+                sync = try Synchronization(databasePath: path, logLevel: self.logLevel)
+            case .json(let path):
+                let fileStorage = JSONFileStorage(filePath: path)
+                sync = Synchronization(fileStorage: fileStorage, logLevel: self.logLevel)
+            case .yaml(let path):
+                let fileStorage = YAMLFileStorage(filePath: path)
+                sync = Synchronization(fileStorage: fileStorage, logLevel: self.logLevel)
+            }
             try sync.syncAuto()
         } catch {
             throw CLIError.syncFailed(error.localizedDescription)
@@ -62,7 +88,7 @@ enum CLIError: LocalizedError {
 public struct CLI: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "reminders-sync",
-        abstract: "A CLI tool for syncing macOS Reminders with SQLite database",
+        abstract: "A CLI tool for syncing macOS Reminders with storage (SQLite, JSON, or YAML)",
         subcommands: [
             Once.self,
             Auto.self,

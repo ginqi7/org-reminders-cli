@@ -13,62 +13,54 @@ make package
 
 # Clean build artifacts
 make clean
-
-# Run with arguments
-.build/apple/Products/Release/org-reminders sync <file.org> -t once
-.build/apple/Products/Release/org-reminders update-hash <file.org>
 ```
 
 ## Architecture Overview
 
-This is a Swift CLI tool that syncs macOS Reminders with Emacs org-mode files, designed to work with the [org-reminders](https://github.com/ginqi7/org-reminders) Emacs package.
+This is a Swift CLI tool that syncs macOS Reminders with a storage backend (SQLite, JSON, or YAML files). The sync is bidirectional with last-write-wins conflict resolution. The storage is consumed by the [org-reminders](https://github.com/ginqi7/org-reminders) Emacs package to provide org-mode integration.
 
 ### Module Structure
 
 ```
 Sources/
-├── orgReminders/          # Main executable target
-│   ├── CLI.swift          # ArgumentParser command definitions (sync, update-hash, websocket-bridge)
-│   ├── Synchronization.swift  # Core sync logic between Reminders and org-mode
-│   ├── OrgRemindersBridge.swift  # WebSocket bridge for Emacs communication
-│   ├── ModelConverter.swift # Converts between Reminders and org-mode models
-│   └── SyncLogger.swift   # Logs sync actions for Emacs consumption
-├── CommonLibrary/         # Shared models
+├── remindersSync/      # Main executable target
+│   ├── main.swift      # Entry point, EventKit access check
+│   ├── CLI.swift       # ArgumentParser subcommands
+│   ├── Synchronization.swift  # Core sync logic
+│   ├── FileStorage.swift      # JSON/YAML file storage
+│   └── SyncLogger.swift       # JSON logging for sync actions
+├── CommonLibrary/      # Shared models (Codable, no dependencies)
 │   ├── CommonReminder.swift
 │   ├── CommonList.swift
-│   ├── CommonDate.swift
-│   └── CommonUtils.swift
-├── OrgLibrary/            # Org-mode parsing using TreeSitter
-│   ├── OrgSource.swift    # Parses org files, extracts headlines
-│   ├── OrgHeadline.swift
-│   └── OrgDate.swift
-└── SQLiteLibrary/         # SQLite utilities (optional storage)
+│   └── CommonDate.swift
+└── SQLiteLibrary/      # SQLite persistence layer
+    ├── SQLiteReminder.swift
+    └── SQLiteList.swift
 ```
 
 ### Key Dependencies
 
 - **swift-argument-parser** - CLI framework
-- **SwiftTreeSitter + tree-sitter-org** - Org-mode file parsing
-- **reminders-cli** - macOS Reminders API wrapper
-- **websocket-bridge-swift** - Emacs WebSocket communication
+- **ginqi7/reminders-cli** - macOS Reminders API (EventKit wrapper)
 - **SQLite.swift** - SQLite bindings
+- **Yams** - YAML encoding/decoding
 
 ### Sync Flow
 
-1. **Fetch**: Read reminders from macOS EventKit and org headlines from file
-2. **Compare**: Use SHA256 hashes and last-modified timestamps to detect changes
-3. **Sync**: Bidirectional sync - newer changes win based on `lastModified` comparison
-4. **Log**: Actions sent to Emacs via WebSocket or JSON for org-mode file updates
+1. **Fetch**: Read reminders/lists from macOS EventKit via `reminders-cli`
+2. **Compare**: Use `lastModified` timestamps to detect which source is newer
+3. **Sync**: Bidirectional sync - newer changes win (last-write-wins)
+4. **Log**: Actions written as JSON for Emacs consumption
 
-### Sync Types
+### CLI Commands
 
-- `all` - Flush all reminders to org file (initial setup)
-- `once` - One-time bidirectional sync
-- `auto` - Continuous sync with file system monitoring and EventKit change notifications
+- `once <path>` - One-time sync to storage (auto-detects format from extension: `.db`=SQLite, `.json`=JSON, `.yaml`/`.yml`=YAML)
+- `auto <path>` - Continuous sync (auto-detects format from extension)
 
 ### Key Concepts
 
-- **H1/H2 Headlines**: H1 sections represent lists, H2 headlines represent individual reminders
-- **Hash tracking**: Each org headline stores a computed hash; changes trigger sync
-- **Frequency**: Auto sync saves after N file changes (controlled by `org-reminders-sync-frequency`)
-- **Display options**: Filter reminders by completion status (all/incompleted/completed)
+- **Auto-detection**: Format is determined by file extension - `.json` for JSON, `.yaml`/`.yml` for YAML, `.db` or no extension for SQLite
+- **Last-write-wins**: When a reminder differs between sources, the one with the newer `lastModified` timestamp wins
+- **Storage backends**: SQLite (default), JSON file, or YAML file
+- **Deleted reminders**: Soft-deleted in storage (marked `isDeleted = true`) rather than hard deleted
+- **FileData structure**: JSON/YAML files store both `lists` and `reminders` in a single file with `FileData` struct

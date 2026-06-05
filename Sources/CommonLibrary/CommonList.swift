@@ -1,6 +1,6 @@
 import Foundation
 
-public class CommonList: Encodable, Hashable {
+public final class CommonList: Codable, Hashable {
   public var id: String?
   public var title: String
   public var isDeleted: Bool = false
@@ -24,12 +24,11 @@ public class CommonList: Encodable, Hashable {
     try container.encodeIfPresent(self.id, forKey: .id)
   }
 
-    public func toJson() -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let encoded = try? encoder.encode(self)
-        return String(data: encoded ?? Data(), encoding: .utf8) ?? ""
-    }
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: EncodingKeys.self)
+    self.id = try container.decodeIfPresent(String.self, forKey: .id)
+    self.title = try container.decode(String.self, forKey: .title)
+  }
 
   public init(
     title: String,

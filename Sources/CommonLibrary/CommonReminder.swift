@@ -1,6 +1,6 @@
 import Foundation
 
-public class CommonReminder: Encodable {
+public final class CommonReminder: Codable {
   public var title: String
   public var externalId: String?
   public var priority: Int
@@ -71,6 +71,33 @@ public class CommonReminder: Encodable {
     try container.encodeIfPresent(self.lastModified?.dateText, forKey: .lastModified)
     try container.encodeIfPresent(self.notes, forKey: .notes)
 
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: EncodingKeys.self)
+    self.externalId = try container.decodeIfPresent(String.self, forKey: .externalId)
+    self.title = try container.decode(String.self, forKey: .title)
+    self.isCompleted = try container.decode(Bool.self, forKey: .isCompleted)
+    self.priority = try container.decode(Int.self, forKey: .priority)
+    self.list = try container.decode(CommonList.self, forKey: .list)
+    self.hash = try container.decodeIfPresent(String.self, forKey: .hash)
+    if let completionDateText = try container.decodeIfPresent(String.self, forKey: .completionDate) {
+      self.completionDate = try? CommonDate(dateText: completionDateText)
+    } else {
+      self.completionDate = nil
+    }
+    if let dueDateText = try container.decodeIfPresent(String.self, forKey: .dueDate) {
+      self.dueDate = try? CommonDate(dateText: dueDateText)
+    } else {
+      self.dueDate = nil
+    }
+    if let lastModifiedText = try container.decodeIfPresent(String.self, forKey: .lastModified) {
+      self.lastModified = try? CommonDate(dateText: lastModifiedText)
+    } else {
+      self.lastModified = nil
+    }
+    self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
+    self.isDeleted = false
   }
 
     public func toJson() -> String {

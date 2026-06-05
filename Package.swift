@@ -13,6 +13,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser", .upToNextMinor(from: "1.3.1")),
         .package(url: "https://github.com/ginqi7/reminders-cli", branch: "main"),
         .package(url: "https://github.com/stephencelis/SQLite.swift", from: "0.15.4"),
+        .package(url: "https://github.com/jpsim/Yams", from: "5.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -20,6 +21,7 @@ let package = Package(
             dependencies: [
                 "SQLiteLibrary",
                 .product(name: "RemindersLibrary", package: "reminders-cli"),
+                .product(name: "Yams", package: "Yams"),
             ]
         ),
         .target(
